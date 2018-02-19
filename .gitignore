@@ -80,7 +80,11 @@ packages/Autofac.*
 packages/NAudio.*
 packages/Analytics*
 lib/dotnet/SIL.*.dll
+lib/dotnet/SIL.*.dll.config
+lib/dotnet/SIL.*.xml
 lib/dotnet/SIL.*.pdb
 .nuget/NuGet.exe
 build/SIL.BuildTasks.dll
+build/SIL.BuildTasks.pdb
 lib/dotnet/NAudio.dll
+.vs*

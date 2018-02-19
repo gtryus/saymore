@@ -21,6 +21,8 @@ namespace SayMore.Model
 {
 	static class ArchivingHelper
 	{
+		private static ArchivingLanguage _defaultLanguage;
+
 		/// ------------------------------------------------------------------------------------
 		internal static void ArchiveUsingIMDI(IIMDIArchivable element)
 		{
@@ -160,8 +162,12 @@ namespace SayMore.Model
 
 			// session date
 			stringVal = saymoreSession.MetaDataFile.GetStringValue("date", null);
+			var sessionDateTime = DateTime.MinValue;
 			if (!string.IsNullOrEmpty(stringVal))
-				imdiSession.SetDate(DateTime.Parse(stringVal).ToISO8601TimeFormatDateOnlyString());
+			{
+				sessionDateTime = DateTime.Parse(stringVal);
+				imdiSession.SetDate(sessionDateTime.ToISO8601TimeFormatDateOnlyString());
+			}
 
 			// session situation
 			stringVal = saymoreSession.MetaDataFile.GetStringValue("situation", null);
@@ -192,11 +198,22 @@ namespace SayMore.Model
 
 				// display message if the birth year is not valid
 				var birthYear = person.MetaDataFile.GetStringValue("birthYear", string.Empty).Trim();
-				if (!birthYear.IsValidBirthYear())
+				int age = 0;
+				if (!birthYear.IsValidBirthYear() || string.IsNullOrEmpty(birthYear))
 				{
 					var msg = LocalizationManager.GetString("DialogBoxes.ArchivingDlg.InvalidBirthYearMsg",
-						"The Birth Year for {0} should be either blank or a 4 digit number.");
+						"The Birth Year for {0} should be a 4 digit number. It is used to calculate the age for the IMDI export.");
 					model.AdditionalMessages[string.Format(msg, person.Id)] = ArchivingDlgViewModel.MessageType.Warning;
+				}
+				else
+				{
+					age = string.IsNullOrEmpty(birthYear) ? 0 : sessionDateTime.Year - int.Parse(birthYear);
+					if (age < 2 || age > 130)
+					{
+						var msg = LocalizationManager.GetString("DialogBoxes.ArchivingDlg.InvalidAgeMsg",
+							"The age for {0} must be between 2 and 130");
+						model.AdditionalMessages[string.Format(msg, person.Id)] = ArchivingDlgViewModel.MessageType.Warning;
+					}
 				}
 
 				ArchivingActor actor = new ArchivingActor
@@ -204,6 +221,7 @@ namespace SayMore.Model
 					FullName = person.Id,
 					Name = person.MetaDataFile.GetStringValue(PersonFileType.kCode, person.Id),
 					BirthDate = birthYear,
+					Age = age.ToString(),
 					Gender = person.MetaDataFile.GetStringValue(PersonFileType.kGender, null),
 					Education = person.MetaDataFile.GetStringValue(PersonFileType.kEducation, null),
 					Occupation = person.MetaDataFile.GetStringValue(PersonFileType.kPrimaryOccupation, null),
@@ -212,20 +230,35 @@ namespace SayMore.Model
 				};
 
 				// do this to get the ISO3 codes for the languages because they are not in saymore
-				var language = LanguageList.FindByEnglishName(person.MetaDataFile.GetStringValue("primaryLanguage", null));
-				if (language != null)
-					actor.PrimaryLanguage = new ArchivingLanguage(language.Iso3Code, language.EnglishName);
+				var languageKey = person.MetaDataFile.GetStringValue("primaryLanguage", null);
+				var language = LanguageList.FindByEnglishName(languageKey);
+				if (language == null || language.Iso3Code == "und")
+					if (!string.IsNullOrEmpty(languageKey) && languageKey.Length == 3)
+						language = LanguageList.FindByISO3Code(languageKey);
+				if (language != null && language.Iso3Code != "und")
+					actor.PrimaryLanguage = new ArchivingLanguage(language.Iso3Code, language.Definition);
+				else
+					actor.PrimaryLanguage = new ArchivingLanguage(_defaultLanguage.Iso3Code, _defaultLanguage.LanguageName);
 
-				language = LanguageList.FindByEnglishName(person.MetaDataFile.GetStringValue("mothersLanguage", null));
-				if (language != null)
-					actor.MotherTongueLanguage = new ArchivingLanguage(language.Iso3Code, language.EnglishName);
+				languageKey = person.MetaDataFile.GetStringValue("mothersLanguage", null);
+				language = LanguageList.FindByEnglishName(languageKey);
+				if (language == null || language.Iso3Code == "und")
+					if (!string.IsNullOrEmpty(languageKey) && languageKey.Length == 3)
+						language = LanguageList.FindByISO3Code(languageKey);
+				if (language != null && language.Iso3Code != "und")
+					actor.MotherTongueLanguage = new ArchivingLanguage(language.Iso3Code, language.Definition);
 
 				// otherLanguage0 - otherLanguage3
 				for (var i = 0; i < 4; i++)
 				{
-					language = LanguageList.FindByEnglishName(person.MetaDataFile.GetStringValue("otherLanguage" + i, null));
-					if (language != null)
-						actor.Iso3Languages.Add(new ArchivingLanguage(language.Iso3Code, language.EnglishName));
+					languageKey = person.MetaDataFile.GetStringValue("otherLanguage" + i, null);
+					if (string.IsNullOrEmpty(languageKey)) continue;
+					language = LanguageList.FindByEnglishName(languageKey);
+					if (language == null || language.Iso3Code == "und")
+						if (languageKey.Length == 3)
+							language = LanguageList.FindByISO3Code(languageKey);
+					if (language != null && language.Iso3Code != "und")
+						actor.Iso3Languages.Add(new ArchivingLanguage(language.Iso3Code, language.Definition));
 				}
 
 				// custom person fields
@@ -277,7 +310,7 @@ namespace SayMore.Model
 
 		private static string GetFieldValue(ComponentFile file, string valueName)
 		{
-			var stringVal = file.GetStringValue(valueName, null);
+			var stringVal = file.GetStringValue(valueName, null)?.Replace("<","").Replace(">","").ToLower();
 			return string.IsNullOrEmpty(stringVal) ? null : stringVal;
 		}
 
@@ -332,9 +365,10 @@ namespace SayMore.Model
 
 					// SP-765:  Allow codes from Ethnologue that are not in the Arbil list
 					if ((language == null) || (string.IsNullOrEmpty(language.EnglishName)))
-						package.ContentIso3Languages.Add(new ArchivingLanguage(parts[0], parts[1], parts[1]));
+						_defaultLanguage = new ArchivingLanguage(parts[0], parts[1], parts[1]);
 					else
-						package.ContentIso3Languages.Add(new ArchivingLanguage(language.Iso3Code, parts[1], language.EnglishName));
+						_defaultLanguage = new ArchivingLanguage(language.Iso3Code, parts[1], language.EnglishName);
+					package.ContentIso3Languages.Add(_defaultLanguage);
 				}
 			}
 

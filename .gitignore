@@ -11,7 +11,8 @@ src/Sponge/bin/*
 src/Sponge2/Sponge2.csproj.John
 src/SayMore/bin/*
 src/SayMore/Sponge2.csproj.John
-src/Installer/bin/Release/SayMoreInstaller.wixpdb
+src/Installer/bin
+src/Installer/obj
 AttemptAtRemovingGenericRepositories/*
 VS2008Backup/*
 SayMore Design Pics/*

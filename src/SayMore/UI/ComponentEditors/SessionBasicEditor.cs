@@ -18,7 +18,6 @@ using SayMore.Model.Files.DataGathering;
 using SayMore.UI.LowLevelControls;
 using SIL.Archiving.Generic.AccessProtocol;
 using SIL.Archiving.IMDI.Lists;
-using SIL.Windows.Forms.ClearShare;
 
 namespace SayMore.UI.ComponentEditors
 {
